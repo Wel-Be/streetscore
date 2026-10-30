@@ -18,7 +18,7 @@
 <div id="lib"><h1>楽譜スクロール</h1><div class="tools"><button class="k" id="add">PDFを追加</button><input type="file" id="file" accept="application/pdf" hidden><input type="search" id="q" placeholder="曲名で検索"><select id="so"><option value="last">最終演奏日順</option><option value="added">登録日順</option><option value="title">曲名の五十音順</option></select></div><div id="list"></div><a class="of" href="https://ofuse.me/f3a8ad6a" target="_blank" rel="noopener">改善のアイディア・応援はこちら</a></div>
 <div id="ana" hidden><div id="at">解析中</div><div id="pbar"><i></i></div><div id="an"></div><canvas id="pv"></canvas><p><button id="cx">キャンセル</button></p></div>
 <div id="ply" hidden><div id="stage"><div id="strip"></div><div id="hl"></div><div id="cd" hidden></div></div>
-<div id="bar"><button id="bk">一覧へ</button><button id="b0">最初へ</button><button id="bp">前</button><button class="k" id="go">再生</button><button id="bn">次</button><span id="pos"></span>BPM<input type="number" id="bpm" min="20" max="300" step="1" inputmode="numeric"><input type="number" id="nu" min="1" max="32" step="1" inputmode="numeric">/<select id="de"><option>2</option><option>4</option><option>8</option><option>16</option></select><button id="ap">全体に適用</button><button id="ch">この小節から</button><button id="rm">解除</button><button id="zm">−</button><button id="zp">＋</button><label><input type="checkbox" id="mt">メトロノーム</label><label><input type="checkbox" id="cs">カウント音</label></div></div>
+<div id="bar"><button id="bk">一覧へ</button><button id="b0">最初へ</button><button id="bp">前</button><button class="k" id="go">再生</button><button id="bn">次</button><span id="pos"></span>BPM<input type="number" id="bpm" min="20" max="300" step="1" inputmode="numeric"><input type="number" id="nu" min="1" max="32" step="1" inputmode="numeric">/<select id="de"><option>2</option><option>4</option><option>8</option><option>16</option></select><button id="ap">全体に適用</button><button id="ch">この小節から</button><button id="rm">解除</button><button id="rc">記号を再認識</button><button id="zm">−</button><button id="zp">＋</button><label><input type="checkbox" id="mt">メトロノーム</label><label><input type="checkbox" id="cs">カウント音</label></div></div>
 <div id="end" hidden><p id="em"></p><button class="k" id="er">最初から再生</button><button id="el">一覧に戻る</button></div>
 <div id="rot" hidden><p>画面を横向きにしてください</p></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -29,7 +29,7 @@ const tx=async(st,mode,fn)=>{const d=await db;return new Promise((res,rej)=>{con
 const getS=id=>tx('scores','readonly',s=>s.get(id)),allS=()=>tx('scores','readonly',s=>s.getAll()),putS=o=>tx('scores','readwrite',s=>s.put(o)),getF=id=>tx('files','readonly',s=>s.get(id)),putF=o=>tx('files','readwrite',s=>s.put(o));
 const delAll=async id=>{await tx('scores','readwrite',s=>s.delete(id));await tx('files','readwrite',s=>s.delete(id))};
 const SC=3,clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
-let sc,pdf,cancel=false,S=[],M=[],m=0,f=0,cur,st,mode='stop',ms0=0,dur=0,nxt=false,raf=0,txx=0,cd,ctx,srcs=[],wl,failMsg='';
+let sc,pdf,cancel=false,S=[],M=[],m=0,f=0,cur,st,mode='stop',ms0=0,dur=0,nxt=false,raf=0,txx=0,cd,ctx,srcs=[],wl,failMsg='',cands={};
 const set=Object.assign({mt:false,cs:false},JSON.parse(localStorage.ss_set||'{}'));$('#mt').checked=set.mt;$('#cs').checked=set.cs;
 $('#mt').onchange=$('#cs').onchange=()=>{set.mt=$('#mt').checked;set.cs=$('#cs').checked;localStorage.ss_set=JSON.stringify(set)};
 function show(id){['lib','ana','ply'].forEach(x=>$('#'+x).hidden=x!=id);checkRot()}
@@ -41,7 +41,13 @@ const o=document.createElement('button');o.className='k';o.textContent='開く';
 $('#q').oninput=$('#so').onchange=load;$('#add').onclick=()=>$('#file').click();
 $('#file').onchange=async e=>{const fl=e.target.files[0];e.target.value='';if(!fl)return;const id=crypto.randomUUID();
 try{const p=await pdfjsLib.getDocument({data:await fl.arrayBuffer()}).promise;await putF({id,blob:fl});await putS({id,title:fl.name.replace(/\.pdf$/i,''),added:Date.now(),last:0,total:p.numPages,pages:{},bpm:100,num:4,den:4,changes:{},pos:{m:0,f:0},zoom:1,fresh:true});openScore(id)}catch(err){alert('PDFを読み込めません：'+err.message)}};
-async function renderPage(n){const p=await pdf.getPage(n),v=p.getViewport({scale:SC}),c=document.createElement('canvas');c.width=v.width|0;c.height=v.height|0;await p.render({canvasContext:c.getContext('2d',{willReadFrequently:true}),viewport:v}).promise;return c}
+async function renderPage(n){const p=await pdf.getPage(n),v=p.getViewport({scale:SC}),c=document.createElement('canvas');c.width=v.width|0;c.height=v.height|0;await p.render({canvasContext:c.getContext('2d',{willReadFrequently:true}),viewport:v}).promise;try{const tc=await p.getTextContent();c.tx=tc.items.filter(i=>i.str&&i.str.trim()).map(i=>{const q=v.convertToViewportPoint(i.transform[4],i.transform[5]);return{s:i.str.trim(),x:q[0],y:q[1]}})}catch(e){c.tx=[]}return c}
+function detect(sy,tx){const T2=[];for(let k=0;k<tx.length;k++){const a=tx[k];if(/^[=＝]$/.test(a.s)&&tx[k+1]&&/^\d{2,3}$/.test(tx[k+1].s)){T2.push({s:'='+tx[k+1].s,x:a.x,y:a.y});k++}else T2.push(a)}
+for(const s of sy){s.tempi=[];s.sigs=[];const g=s.g,mi=x=>{const r=x-s.x0;for(let j=s.bars.length-2;j>=0;j--)if(r>=s.bars[j]-2)return j;return 0},up=[],lo=[];
+for(const a of T2){if(a.x<s.x0-g||a.x>s.x1+g)continue;
+const mt=/[=＝]\s*(\d{2,3})\b/.exec(a.s);if(mt&&a.y>=s.t1-8*g&&a.y<=s.t1){const b=+mt[1];if(b>=20&&b<=300)s.tempi.push({j:mi(a.x),bpm:b})}
+if(/^\d{1,2}$/.test(a.s)&&a.y>=s.t1-.3*g&&a.y<=s.b1+.5*g)(a.y<s.t1+3*g?up:lo).push(a)}
+for(const u of up){const l=lo.find(l=>Math.abs(l.x-u.x)<=1.2*g);if(!l)continue;const num=+u.s,den=+l.s,j=mi(u.x);if([1,2,4,8,16].includes(den)&&num>=1&&num<=32&&!s.sigs.some(z=>z.j==j))s.sigs.push({j,num,den})}}}
 function analyze(c){const W=c.width,H=c.height,d=c.getContext('2d').getImageData(0,0,W,H).data,dk=new Uint8Array(W*H);for(let i=0;i<W*H;i++)dk[i]=d[i*4]+d[i*4+1]+d[i*4+2]<570?1:0;
 const row=new Int32Array(H);for(let y=0;y<H;y++){let s=0;for(let x=0;x<W;x++)s+=dk[y*W+x];row[y]=s}
 let mx=0;for(const v of row)mx=Math.max(mx,v);if(mx<W*.3)throw new Error(`五線譜が見つかりません（最大の横線は幅の${Math.round(mx/W*100)}％）`);
@@ -52,7 +58,7 @@ const pick=q=>{let best=null,bs=1e9;for(let i=0;i+5<=q.length;i++){const w=q.sli
 for(let i=0;i<stv.length;i++)if(stv[i].length>5)stv[i]=pick(stv[i]);
 for(let i=stv.length-1;i>=0;i--)if(stv[i].length<=2)stv.splice(i,1);
 if(!stv.length)throw new Error('五線譜が見つかりません（横線のみ検出）');
-{const bi=stv.findIndex(x=>x.length!=5);if(bi>=0)throw new Error(`五線の検出が不完全です（検出${stv.length}段、各段の線数 ${stv.map(x=>x.length).join(',')}、段${bi+1}の線の間隔 ${stv[bi].map((v,j)=>j?Math.round(v-stv[bi][j-1]):0).slice(1).join('/')}、標準間隔 ${Math.round(g0)}）[v7]`)}
+{const bi=stv.findIndex(x=>x.length!=5);if(bi>=0)throw new Error(`五線の検出が不完全です（検出${stv.length}段、各段の線数 ${stv.map(x=>x.length).join(',')}、段${bi+1}の線の間隔 ${stv[bi].map((v,j)=>j?Math.round(v-stv[bi][j-1]):0).slice(1).join('/')}、標準間隔 ${Math.round(g0)}）[v8]`)}
 const T=stv.map(q=>[Math.round(q[0]),Math.round(q[4])]);
 const colOK=(x,i)=>{let c=0;for(let y=T[i][0];y<=T[i][1];y++)c+=dk[y*W+x];return c>=.9*(T[i][1]-T[i][0]+1)};
 const gapOK=(x,i)=>{let c=0;const p=T[i][1]+1,q=T[i+1][0];for(let y=p;y<q;y++)c+=dk[y*W+x];return c>=.8*(q-p)};
@@ -65,24 +71,30 @@ let xs=find(true);if(!xs.length&&s.length>1)xs=find(false);
 const cl=[];for(const x of xs){const l=cl[cl.length-1];if(l&&x-l[l.length-1]<=.8*gg)l.push(x);else cl.push([x])}
 let bars=[];for(const q of cl){const x=q.reduce((p,v)=>p+v,0)/q.length;if(!bars.length||x-bars[bars.length-1]>=4*gg)bars.push(x)}
 if(bars.length<2)throw new Error(`小節線が見つかりません（${k+1}組目、${s.length}段、検出${bars.length}本）`);
-sy.push({y0:Math.max(0,Math.round(top-4*gg)),y1:Math.min(H,Math.round(bot+5*gg)),x0:Math.round(bars[0]),x1:Math.round(bars[bars.length-1]),g:gg,bars:bars.map(x=>x-Math.round(bars[0])),n:s.length})}
-return sy}
+sy.push({y0:Math.max(0,Math.round(top-4*gg)),y1:Math.min(H,Math.round(bot+5*gg)),x0:Math.round(bars[0]),x1:Math.round(bars[bars.length-1]),g:gg,bars:bars.map(x=>x-Math.round(bars[0])),n:s.length,t1:top,b1:T[s[0]][1]})}
+detect(sy,c.tx||[]);return sy}
 async function runAnalysis(){sc.total=pdf.numPages;const ok=()=>Object.keys(sc.pages).length;
 for(let n=1;n<=sc.total;n++){if(sc.pages[n])continue;if(cancel)break;$('#at').textContent='楽譜を解析中';$('#an').textContent=`${ok()} / ${sc.total} ページ`;
 try{const c=await renderPage(n);sc.pages[n]={ok:true,systems:analyze(c)};const pv=$('#pv');pv.width=c.width/4;pv.height=c.height/4;pv.getContext('2d').drawImage(c,0,0,pv.width,pv.height)}catch(e){sc.pages[n]={ok:false,err:e.message}}
 $('#pbar i').style.width=Math.round(ok()/sc.total*100)+'%';$('#an').textContent=`${ok()} / ${sc.total} ページ（${Math.round(ok()/sc.total*100)}％）`;await putS(sc)}}
 $('#cx').onclick=()=>{cancel=true};
-async function openScore(id){sc=await getS(id);if(sc.ver!==7){sc.pages={};sc.ver=7;await putS(sc)}cancel=false;$('#pbar i').style.width='0';show('ana');
+async function openScore(id){sc=await getS(id);if(sc.ver!==8){sc.pages={};sc.ver=8;sc.candDone=false;await putS(sc)}cancel=false;$('#pbar i').style.width='0';show('ana');
 try{pdf=await pdfjsLib.getDocument({data:await (await getF(id)).blob.arrayBuffer()}).promise}catch(e){alert('PDFを開けません：'+e.message);show('lib');return}
 await runAnalysis();if(cancel){show('lib');load();return}await buildPlayer()}
-async function buildPlayer(){S=[];let bad=0;$('#at').textContent='楽譜を読み込み中';
+async function buildPlayer(){S=[];cands={};let bad=0,off=0;$('#at').textContent='楽譜を読み込み中';
 for(let n=1;n<=sc.total;n++){const p=sc.pages[n];if(!p||!p.ok){bad=n;break}const pc=await renderPage(n);$('#an').textContent=`${n} / ${sc.total} ページ`;
-for(const s of p.systems){const cv=document.createElement('canvas');cv.width=s.x1-s.x0;cv.height=s.y1-s.y0;cv.getContext('2d').drawImage(pc,s.x0,s.y0,cv.width,cv.height,0,0,cv.width,cv.height);S.push({cv,g:s.g,bars:s.bars,w:cv.width,h:cv.height})}}
+for(const s of p.systems){const cv=document.createElement('canvas');cv.width=s.x1-s.x0;cv.height=s.y1-s.y0;cv.getContext('2d').drawImage(pc,s.x0,s.y0,cv.width,cv.height,0,0,cv.width,cv.height);S.push({cv,g:s.g,bars:s.bars,w:cv.width,h:cv.height});for(const t of s.tempi||[])(cands[off+t.j]=cands[off+t.j]||{}).bpm=t.bpm;for(const t of s.sigs||[]){const o=cands[off+t.j]=cands[off+t.j]||{};o.num=t.num;o.den=t.den}off+=s.bars.length-1}}
 failMsg=bad?`ページ${bad}の解析に失敗したため、その手前で停止します（${sc.pages[bad]?sc.pages[bad].err:'未解析'}）。`:'';
 if(!S.length){alert('演奏できるページがありません。'+failMsg);show('lib');load();return}
-if(failMsg)alert(failMsg);show('ply');layout();
+if(failMsg)alert(failMsg);show('ply');layout();if(!sc.candDone)applyCands(false);
 if(!sc.fresh&&(sc.pos.m||sc.pos.f)&&confirm('続きから再開しますか？\n（キャンセルで最初から）')){m=clamp(sc.pos.m,0,M.length-1);f=sc.pos.f}else{m=0;f=0}
 mode='stop';cur=stateAt(m);ui();place()}
+function applyCands(force){const ks=Object.keys(cands).map(Number).sort((a,b)=>a-b);let s={bpm:sc.bpm,num:sc.num,den:sc.den};const out=[];
+for(const k of ks){const c=cands[k],d={};for(const q of['bpm','num','den'])if(c[q]!=null&&c[q]!==s[q])d[q]=c[q];if(Object.keys(d).length){out.push([k,d]);Object.assign(s,d)}}
+if(!out.length){if(force)alert('反映できる新しいテンポ・拍子記号はありません（反映済み、または文字として含まれていない楽譜です）');sc.candDone=true;putS(sc);return}
+const tx=out.slice(0,10).map(([k,d])=>`小節${k+1}：${d.bpm?'♩='+d.bpm+' ':''}${d.num?d.num+'/'+d.den:''}`).join('\n')+(out.length>10?`\n…ほか${out.length-10}件`:'');
+sc.candDone=true;if(!confirm('次のテンポ・拍子記号を認識しました。反映しますか？（♩は四分音符と仮定、あとから変更できます）\n\n'+tx)){putS(sc);return}
+for(const[k,d]of out){if(k==0)Object.assign(sc,d);else sc.changes[k]=Object.assign({},d,sc.changes[k]||{})}putS(sc)}
 function layout(){const H=$('#stage').clientHeight-8,mr=Math.max(...S.map(s=>s.h/s.g)),k=H/mr*sc.zoom,strip=$('#strip');strip.textContent='';M=[];let X=0;
 for(const s of S){const q=k/s.g;s.cv.style.width=s.w*q+'px';s.cv.style.height=s.h*q+'px';strip.append(s.cv);for(let j=0;j<s.bars.length-1;j++)M.push({l:X+s.bars[j]*q,w:(s.bars[j+1]-s.bars[j])*q});X+=s.w*q}m=clamp(m,0,M.length-1)}
 function place(){const a=M[m];txx=$('#stage').clientWidth*.4-(a.l+f*a.w);$('#strip').style.transform=`translateX(${txx}px)`;const h=$('#hl');h.hidden=mode!='stop';h.style.left=a.l+txx+'px';h.style.width=a.w+'px'}
@@ -91,7 +103,7 @@ function ui(){$('#bpm').value=cur.bpm;$('#nu').value=cur.num;$('#de').value=cur.
 function save(){sc.pos={m,f};sc.last=Date.now();sc.fresh=false;putS(sc)}
 function inp(){const b=+$('#bpm').value,n=+$('#nu').value,d=+$('#de').value;if(!Number.isInteger(b)||b<20||b>300||!Number.isInteger(n)||n<1||n>32){alert('BPMは20〜300の整数、拍子の分子は1〜32の整数で入力してください');return null}return{bpm:b,num:n,den:d}}
 $('#ap').onclick=()=>{const v=inp();if(v){Object.assign(sc,v);cur=stateAt(m);ui();save()}};$('#ch').onclick=()=>{const v=inp();if(v){sc.changes[m]=v;cur=stateAt(m);ui();save()}};$('#rm').onclick=()=>{delete sc.changes[m];cur=stateAt(m);ui();save()};
-const zoom=d=>{sc.zoom=clamp(Math.round((sc.zoom+d)*10)/10,.5,2.5);layout();place();save()};$('#zm').onclick=()=>zoom(-.1);$('#zp').onclick=()=>zoom(.1);
+const zoom=d=>{sc.zoom=clamp(Math.round((sc.zoom+d)*10)/10,.5,2.5);layout();place();save()};$('#rc').onclick=()=>{applyCands(true);cur=stateAt(m);ui()};$('#zm').onclick=()=>zoom(-.1);$('#zp').onclick=()=>zoom(.1);
 const mv=i=>{m=clamp(i,0,M.length-1);f=0;cur=stateAt(m);ui();place()};$('#bp').onclick=()=>mv(m-1);$('#bn').onclick=()=>mv(m+1);$('#b0').onclick=()=>mv(0);
 function click(t,acc){const o=ctx.createOscillator(),g=ctx.createGain();o.type='triangle';o.frequency.value=acc?1500:1000;g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(acc?.9:.5,t+.002);g.gain.exponentialRampToValueAtTime(.0001,t+.05);o.connect(g).connect(ctx.destination);o.start(t);o.stop(t+.06);srcs.push(o);o.onended=()=>{srcs=srcs.filter(x=>x!=o)}}
 const stopClicks=()=>{srcs.forEach(o=>{try{o.stop()}catch(e){}});srcs=[]};
