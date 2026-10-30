@@ -28,7 +28,7 @@ const db=new Promise((res,rej)=>{const r=indexedDB.open('ss',1);r.onupgradeneede
 const tx=async(st,mode,fn)=>{const d=await db;return new Promise((res,rej)=>{const t=d.transaction(st,mode),q=fn(t.objectStore(st));t.oncomplete=()=>res(q&&q.result);t.onerror=()=>rej(t.error)})};
 const getS=id=>tx('scores','readonly',s=>s.get(id)),allS=()=>tx('scores','readonly',s=>s.getAll()),putS=o=>tx('scores','readwrite',s=>s.put(o)),getF=id=>tx('files','readonly',s=>s.get(id)),putF=o=>tx('files','readwrite',s=>s.put(o));
 const delAll=async id=>{await tx('scores','readwrite',s=>s.delete(id));await tx('files','readwrite',s=>s.delete(id))};
-const SC=2,clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const SC=3,clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 let sc,pdf,cancel=false,S=[],M=[],m=0,f=0,cur,st,mode='stop',ms0=0,dur=0,nxt=false,raf=0,txx=0,cd,ctx,srcs=[],wl,failMsg='';
 const set=Object.assign({mt:false,cs:false},JSON.parse(localStorage.ss_set||'{}'));$('#mt').checked=set.mt;$('#cs').checked=set.cs;
 $('#mt').onchange=$('#cs').onchange=()=>{set.mt=$('#mt').checked;set.cs=$('#cs').checked;localStorage.ss_set=JSON.stringify(set)};
@@ -42,18 +42,21 @@ $('#q').oninput=$('#so').onchange=load;$('#add').onclick=()=>$('#file').click();
 $('#file').onchange=async e=>{const fl=e.target.files[0];e.target.value='';if(!fl)return;const id=crypto.randomUUID();
 try{const p=await pdfjsLib.getDocument({data:await fl.arrayBuffer()}).promise;await putF({id,blob:fl});await putS({id,title:fl.name.replace(/\.pdf$/i,''),added:Date.now(),last:0,total:p.numPages,pages:{},bpm:100,num:4,den:4,changes:{},pos:{m:0,f:0},zoom:1,fresh:true});openScore(id)}catch(err){alert('PDFを読み込めません：'+err.message)}};
 async function renderPage(n){const p=await pdf.getPage(n),v=p.getViewport({scale:SC}),c=document.createElement('canvas');c.width=v.width|0;c.height=v.height|0;await p.render({canvasContext:c.getContext('2d',{willReadFrequently:true}),viewport:v}).promise;return c}
-function analyze(c){const W=c.width,H=c.height,d=c.getContext('2d').getImageData(0,0,W,H).data,dk=new Uint8Array(W*H);for(let i=0;i<W*H;i++)dk[i]=d[i*4]+d[i*4+1]+d[i*4+2]<420?1:0;
+function analyze(c){const W=c.width,H=c.height,d=c.getContext('2d').getImageData(0,0,W,H).data,dk=new Uint8Array(W*H);for(let i=0;i<W*H;i++)dk[i]=d[i*4]+d[i*4+1]+d[i*4+2]<570?1:0;
 const row=new Int32Array(H);for(let y=0;y<H;y++){let s=0;for(let x=0;x<W;x++)s+=dk[y*W+x];row[y]=s}
-let mx=0;for(const v of row)mx=Math.max(mx,v);if(mx<W*.3)throw new Error('五線譜が見つかりません');
+let mx=0;for(const v of row)mx=Math.max(mx,v);if(mx<W*.3)throw new Error(`五線譜が見つかりません（最大の横線は幅の${Math.round(mx/W*100)}％）`);
 const ls=[];for(let y=0;y<H;){if(row[y]>=mx*.5){const a=y;while(y<H&&row[y]>=mx*.5)y++;ls.push((a+y-1)/2)}else y++}
 const gp=[];for(let i=1;i<ls.length;i++)gp.push(ls[i]-ls[i-1]);const g0=[...gp].sort((a,b)=>a-b)[Math.floor(gp.length*.25)]||1,stv=[];let g=[ls[0]];
 for(let i=1;i<ls.length;i++){if(ls[i]-ls[i-1]>1.8*g0){stv.push(g);g=[]}g.push(ls[i])}stv.push(g);
-if(stv.some(x=>x.length!=5))throw new Error('五線の検出が不完全です');if(stv.length%2)throw new Error('段の数が奇数です（右手・左手の組にできません）');
-const sy=[];for(let i=0;i<stv.length;i+=2){const a=stv[i],b=stv[i+1],t1=Math.round(a[0]),b1=Math.round(a[4]),t2=Math.round(b[0]),b2=Math.round(b[4]),gg=(a[4]-a[0])/4,xs=[];
-for(let x=0;x<W;x++){let c1=0,c2=0;for(let y=t1;y<=b1;y++)c1+=dk[y*W+x];for(let y=t2;y<=b2;y++)c2+=dk[y*W+x];if(c1>=.95*(b1-t1+1)&&c2>=.95*(b2-t2+1))xs.push(x)}
+if(stv.some(x=>x.length!=5))throw new Error(`五線の検出が不完全です（検出${stv.length}段、各段の線数 ${stv.map(x=>x.length).join(',')}）`);
+if(stv.length%2)throw new Error(`段の数が奇数です（検出${stv.length}段）`);
+const sy=[];for(let i=0;i<stv.length;i+=2){const a=stv[i],b=stv[i+1],t1=Math.round(a[0]),b1=Math.round(a[4]),t2=Math.round(b[0]),b2=Math.round(b[4]),gg=(a[4]-a[0])/4;
+const find=need=>{const xs=[];for(let x=0;x<W;x++){let c1=0,c2=0,c3=0;for(let y=t1;y<=b1;y++)c1+=dk[y*W+x];for(let y=t2;y<=b2;y++)c2+=dk[y*W+x];
+if(c1<.9*(b1-t1+1)||c2<.9*(b2-t2+1))continue;if(need){for(let y=b1+1;y<t2;y++)c3+=dk[y*W+x];if(c3<.8*(t2-b1-1))continue}xs.push(x)}return xs};
+let xs=find(true);if(!xs.length)xs=find(false);
 const cl=[];for(const x of xs){const l=cl[cl.length-1];if(l&&x-l[l.length-1]<=.8*gg)l.push(x);else cl.push([x])}
 let bars=[];for(const q of cl){const x=q.reduce((p,v)=>p+v,0)/q.length;if(!bars.length||x-bars[bars.length-1]>=4*gg)bars.push(x)}
-if(bars.length<2)throw new Error('小節線が見つかりません');
+if(bars.length<2)throw new Error(`小節線が見つかりません（${i/2+1}組目、検出${bars.length}本）`);
 sy.push({y0:Math.max(0,Math.round(t1-4*gg)),y1:Math.min(H,Math.round(b2+5*gg)),x0:Math.round(bars[0]),x1:Math.round(bars[bars.length-1]),g:gg,bars:bars.map(x=>x-Math.round(bars[0]))})}
 return sy}
 async function runAnalysis(){sc.total=pdf.numPages;const ok=()=>Object.keys(sc.pages).length;
