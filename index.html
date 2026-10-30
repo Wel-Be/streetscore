@@ -37,7 +37,7 @@ const fmt=t=>t?new Date(t).toLocaleDateString('ja-JP'):'未演奏';
 async function load(){let a=await allS();const q=$('#q').value.trim(),so=$('#so').value;a=a.filter(s=>s.title.includes(q));a.sort((x,y)=>so=='title'?x.title.localeCompare(y.title,'ja'):so=='added'?y.added-x.added:(y.last||0)-(x.last||0));
 const top=Math.max(0,...a.map(s=>s.last||0)),L=$('#list');L.textContent='';if(!a.length)L.textContent='「PDFを追加」から楽譜を登録してください。';
 for(const s of a){const d=document.createElement('div');d.className='it'+(top&&s.last==top?' cur':'');const b=document.createElement('b');b.textContent=s.title;const sm=document.createElement('small');sm.textContent=`登録 ${fmt(s.added)} ／ 最終演奏 ${fmt(s.last)}`+(top&&s.last==top?' ／ 前回の楽譜':'');const r=document.createElement('div');r.className='r';
-const o=document.createElement('button');o.className='k';o.textContent='開く';o.onclick=()=>openScore(s.id);const rn=document.createElement('button');rn.textContent='曲名変更';rn.onclick=async()=>{const t=prompt('曲名',s.title);if(t&&t.trim()){s.title=t.trim();await putS(s);load()}};const dl=document.createElement('button');dl.textContent='削除';dl.onclick=async()=>{if(confirm(`「${s.title}」を削除しますか？`)){await delAll(s.id);load()}};r.append(o,rn,dl);d.append(b,sm,r);L.append(d)}}
+const o=document.createElement('button');o.className='k';o.textContent='開く';o.onclick=()=>openScore(s.id);const rn=document.createElement('button');rn.textContent='曲名変更';rn.onclick=async()=>{const t=prompt('曲名',s.title);if(t&&t.trim()){s.title=t.trim();await putS(s);load()}};const dl=document.createElement('button');dl.textContent='削除';dl.onclick=async()=>{if(confirm(`「${s.title}」を削除しますか？`)){await delAll(s.id);load()}};const ra=document.createElement('button');ra.textContent='再解析';ra.onclick=async()=>{const t=await getS(s.id);for(const k in t.pages)if(!t.pages[k].ok)delete t.pages[k];await putS(t);openScore(s.id)};r.append(o,ra,rn,dl);d.append(b,sm,r);L.append(d)}}
 $('#q').oninput=$('#so').onchange=load;$('#add').onclick=()=>$('#file').click();
 $('#file').onchange=async e=>{const fl=e.target.files[0];e.target.value='';if(!fl)return;const id=crypto.randomUUID();
 try{const p=await pdfjsLib.getDocument({data:await fl.arrayBuffer()}).promise;await putF({id,blob:fl});await putS({id,title:fl.name.replace(/\.pdf$/i,''),added:Date.now(),last:0,total:p.numPages,pages:{},bpm:100,num:4,den:4,changes:{},pos:{m:0,f:0},zoom:1,fresh:true});openScore(id)}catch(err){alert('PDFを読み込めません：'+err.message)}};
@@ -50,7 +50,7 @@ const gp=[];for(let i=1;i<ls.length;i++)gp.push(ls[i]-ls[i-1]);const g0=[...gp].
 for(let i=1;i<ls.length;i++){if(ls[i]-ls[i-1]>1.8*g0){stv.push(g);g=[]}g.push(ls[i])}stv.push(g);
 const pick=q=>{let best=null,bs=1e9;for(let i=0;i+5<=q.length;i++){const w=q.slice(i,i+5),gs=[1,2,3,4].map(j=>w[j]-w[j-1]),r=Math.max(...gs)-Math.min(...gs);if(r<=.25*g0&&r<bs){bs=r;best=w}}return best||q};
 for(let i=0;i<stv.length;i++)if(stv[i].length>5)stv[i]=pick(stv[i]);
-if(stv.some(x=>x.length!=5))throw new Error(`五線の検出が不完全です（検出${stv.length}段、各段の線数 ${stv.map(x=>x.length).join(',')}）`);
+{const bi=stv.findIndex(x=>x.length!=5);if(bi>=0)throw new Error(`五線の検出が不完全です（検出${stv.length}段、各段の線数 ${stv.map(x=>x.length).join(',')}、段${bi+1}の線の間隔 ${stv[bi].map((v,j)=>j?Math.round(v-stv[bi][j-1]):0).slice(1).join('/')}、標準間隔 ${Math.round(g0)}）[v3]`)}
 if(stv.length%2)throw new Error(`段の数が奇数です（検出${stv.length}段）`);
 const sy=[];for(let i=0;i<stv.length;i+=2){const a=stv[i],b=stv[i+1],t1=Math.round(a[0]),b1=Math.round(a[4]),t2=Math.round(b[0]),b2=Math.round(b[4]),gg=(a[4]-a[0])/4;
 const find=need=>{const xs=[];for(let x=0;x<W;x++){let c1=0,c2=0,c3=0;for(let y=t1;y<=b1;y++)c1+=dk[y*W+x];for(let y=t2;y<=b2;y++)c2+=dk[y*W+x];
@@ -66,7 +66,7 @@ for(let n=1;n<=sc.total;n++){if(sc.pages[n])continue;if(cancel)break;$('#at').te
 try{const c=await renderPage(n);sc.pages[n]={ok:true,systems:analyze(c)};const pv=$('#pv');pv.width=c.width/4;pv.height=c.height/4;pv.getContext('2d').drawImage(c,0,0,pv.width,pv.height)}catch(e){sc.pages[n]={ok:false,err:e.message}}
 $('#pbar i').style.width=Math.round(ok()/sc.total*100)+'%';$('#an').textContent=`${ok()} / ${sc.total} ページ（${Math.round(ok()/sc.total*100)}％）`;await putS(sc)}}
 $('#cx').onclick=()=>{cancel=true};
-async function openScore(id){sc=await getS(id);cancel=false;$('#pbar i').style.width='0';show('ana');
+async function openScore(id){sc=await getS(id);if(sc.ver!==3){sc.pages={};sc.ver=3;await putS(sc)}cancel=false;$('#pbar i').style.width='0';show('ana');
 try{pdf=await pdfjsLib.getDocument({data:await (await getF(id)).blob.arrayBuffer()}).promise}catch(e){alert('PDFを開けません：'+e.message);show('lib');return}
 await runAnalysis();if(cancel){show('lib');load();return}await buildPlayer()}
 async function buildPlayer(){S=[];let bad=0;$('#at').textContent='楽譜を読み込み中';
