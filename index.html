@@ -46,11 +46,11 @@ function analyze(c){const W=c.width,H=c.height,d=c.getContext('2d').getImageData
 const row=new Int32Array(H);for(let y=0;y<H;y++){let s=0;for(let x=0;x<W;x++)s+=dk[y*W+x];row[y]=s}
 let mx=0;for(const v of row)mx=Math.max(mx,v);if(mx<W*.3)throw new Error(`五線譜が見つかりません（最大の横線は幅の${Math.round(mx/W*100)}％）`);
 const ls=[];for(let y=0;y<H;){if(row[y]>=mx*.5){const a=y;while(y<H&&row[y]>=mx*.5)y++;ls.push((a+y-1)/2)}else y++}
-const gp=[];for(let i=1;i<ls.length;i++)gp.push(ls[i]-ls[i-1]);const g0=[...gp].sort((a,b)=>a-b)[Math.floor(gp.length*.25)]||1,stv=[];let g=[ls[0]];
-for(let i=1;i<ls.length;i++){if(ls[i]-ls[i-1]>1.8*g0){stv.push(g);g=[]}g.push(ls[i])}stv.push(g);
+const gp=[];for(let i=1;i<ls.length;i++)gp.push(ls[i]-ls[i-1]);const g0=[...gp].sort((a,b)=>a-b)[Math.floor(gp.length*.25)]||1,stv=[],L=[];for(const v of ls){if(L.length&&v-L[L.length-1]<.6*g0)L[L.length-1]=(L[L.length-1]+v)/2;else L.push(v)}let g=[L[0]];
+for(let i=1;i<L.length;i++){if(L[i]-L[i-1]>1.8*g0){stv.push(g);g=[]}g.push(L[i])}stv.push(g);
 const pick=q=>{let best=null,bs=1e9;for(let i=0;i+5<=q.length;i++){const w=q.slice(i,i+5),gs=[1,2,3,4].map(j=>w[j]-w[j-1]),r=Math.max(...gs)-Math.min(...gs);if(r<=.25*g0&&r<bs){bs=r;best=w}}return best||q};
 for(let i=0;i<stv.length;i++)if(stv[i].length>5)stv[i]=pick(stv[i]);
-{const bi=stv.findIndex(x=>x.length!=5);if(bi>=0)throw new Error(`五線の検出が不完全です（検出${stv.length}段、各段の線数 ${stv.map(x=>x.length).join(',')}、段${bi+1}の線の間隔 ${stv[bi].map((v,j)=>j?Math.round(v-stv[bi][j-1]):0).slice(1).join('/')}、標準間隔 ${Math.round(g0)}）[v3]`)}
+{const bi=stv.findIndex(x=>x.length!=5);if(bi>=0)throw new Error(`五線の検出が不完全です（検出${stv.length}段、各段の線数 ${stv.map(x=>x.length).join(',')}、段${bi+1}の線の間隔 ${stv[bi].map((v,j)=>j?Math.round(v-stv[bi][j-1]):0).slice(1).join('/')}、標準間隔 ${Math.round(g0)}）[v4]`)}
 if(stv.length%2)throw new Error(`段の数が奇数です（検出${stv.length}段）`);
 const sy=[];for(let i=0;i<stv.length;i+=2){const a=stv[i],b=stv[i+1],t1=Math.round(a[0]),b1=Math.round(a[4]),t2=Math.round(b[0]),b2=Math.round(b[4]),gg=(a[4]-a[0])/4;
 const find=need=>{const xs=[];for(let x=0;x<W;x++){let c1=0,c2=0,c3=0;for(let y=t1;y<=b1;y++)c1+=dk[y*W+x];for(let y=t2;y<=b2;y++)c2+=dk[y*W+x];
@@ -66,7 +66,7 @@ for(let n=1;n<=sc.total;n++){if(sc.pages[n])continue;if(cancel)break;$('#at').te
 try{const c=await renderPage(n);sc.pages[n]={ok:true,systems:analyze(c)};const pv=$('#pv');pv.width=c.width/4;pv.height=c.height/4;pv.getContext('2d').drawImage(c,0,0,pv.width,pv.height)}catch(e){sc.pages[n]={ok:false,err:e.message}}
 $('#pbar i').style.width=Math.round(ok()/sc.total*100)+'%';$('#an').textContent=`${ok()} / ${sc.total} ページ（${Math.round(ok()/sc.total*100)}％）`;await putS(sc)}}
 $('#cx').onclick=()=>{cancel=true};
-async function openScore(id){sc=await getS(id);if(sc.ver!==3){sc.pages={};sc.ver=3;await putS(sc)}cancel=false;$('#pbar i').style.width='0';show('ana');
+async function openScore(id){sc=await getS(id);if(sc.ver!==4){sc.pages={};sc.ver=4;await putS(sc)}cancel=false;$('#pbar i').style.width='0';show('ana');
 try{pdf=await pdfjsLib.getDocument({data:await (await getF(id)).blob.arrayBuffer()}).promise}catch(e){alert('PDFを開けません：'+e.message);show('lib');return}
 await runAnalysis();if(cancel){show('lib');load();return}await buildPlayer()}
 async function buildPlayer(){S=[];let bad=0;$('#at').textContent='楽譜を読み込み中';
