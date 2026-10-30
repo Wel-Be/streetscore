@@ -48,6 +48,8 @@ let mx=0;for(const v of row)mx=Math.max(mx,v);if(mx<W*.3)throw new Error(`五線
 const ls=[];for(let y=0;y<H;){if(row[y]>=mx*.5){const a=y;while(y<H&&row[y]>=mx*.5)y++;ls.push((a+y-1)/2)}else y++}
 const gp=[];for(let i=1;i<ls.length;i++)gp.push(ls[i]-ls[i-1]);const g0=[...gp].sort((a,b)=>a-b)[Math.floor(gp.length*.25)]||1,stv=[];let g=[ls[0]];
 for(let i=1;i<ls.length;i++){if(ls[i]-ls[i-1]>1.8*g0){stv.push(g);g=[]}g.push(ls[i])}stv.push(g);
+const pick=q=>{let best=null,bs=1e9;for(let i=0;i+5<=q.length;i++){const w=q.slice(i,i+5),gs=[1,2,3,4].map(j=>w[j]-w[j-1]),r=Math.max(...gs)-Math.min(...gs);if(r<=.25*g0&&r<bs){bs=r;best=w}}return best||q};
+for(let i=0;i<stv.length;i++)if(stv[i].length>5)stv[i]=pick(stv[i]);
 if(stv.some(x=>x.length!=5))throw new Error(`五線の検出が不完全です（検出${stv.length}段、各段の線数 ${stv.map(x=>x.length).join(',')}）`);
 if(stv.length%2)throw new Error(`段の数が奇数です（検出${stv.length}段）`);
 const sy=[];for(let i=0;i<stv.length;i+=2){const a=stv[i],b=stv[i+1],t1=Math.round(a[0]),b1=Math.round(a[4]),t2=Math.round(b[0]),b2=Math.round(b[4]),gg=(a[4]-a[0])/4;
