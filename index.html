@@ -29,7 +29,7 @@ const tx=async(st,mode,fn)=>{const d=await db;return new Promise((res,rej)=>{con
 const getS=id=>tx('scores','readonly',s=>s.get(id)),allS=()=>tx('scores','readonly',s=>s.getAll()),putS=o=>tx('scores','readwrite',s=>s.put(o)),getF=id=>tx('files','readonly',s=>s.get(id)),putF=o=>tx('files','readwrite',s=>s.put(o));
 const delAll=async id=>{await tx('scores','readwrite',s=>s.delete(id));await tx('files','readwrite',s=>s.delete(id))};
 const SC=3,clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
-let sc,pdf,cancel=false,S=[],M=[],m=0,f=0,cur,st,mode='stop',ms0=0,dur=0,nxt=false,raf=0,txx=0,cd,ctx,srcs=[],wl,failMsg='',cands={};
+let sc,pdf,cancel=false,S=[],M=[],m=0,f=0,cur,st,mode='stop',ms0=0,dur=0,nxt=false,raf=0,txx=0,cd,ctx,srcs=[],wl,failMsg='',cands={},dbgs=[];
 const set=Object.assign({mt:false,cs:false},JSON.parse(localStorage.ss_set||'{}'));$('#mt').checked=set.mt;$('#cs').checked=set.cs;
 $('#mt').onchange=$('#cs').onchange=()=>{set.mt=$('#mt').checked;set.cs=$('#cs').checked;localStorage.ss_set=JSON.stringify(set)};
 function show(id){['lib','ana','ply'].forEach(x=>$('#'+x).hidden=x!=id);checkRot()}
@@ -45,8 +45,10 @@ async function renderPage(n){const p=await pdf.getPage(n),v=p.getViewport({scale
 function detect(sy,tx){const T2=[];for(let k=0;k<tx.length;k++){const a=tx[k];if(/^[=＝]$/.test(a.s)&&tx[k+1]&&/^\d{2,3}$/.test(tx[k+1].s)){T2.push({s:'='+tx[k+1].s,x:a.x,y:a.y});k++}else T2.push(a)}
 for(const s of sy){s.tempi=[];s.sigs=[];const g=s.g,mi=x=>{const r=x-s.x0;for(let j=s.bars.length-2;j>=0;j--)if(r>=s.bars[j]-2)return j;return 0},up=[],lo=[];
 for(const a of T2){if(a.x<s.x0-g||a.x>s.x1+g)continue;
-const mt=/[=＝]\s*(\d{2,3})\b/.exec(a.s);if(mt&&a.y>=s.t1-8*g&&a.y<=s.t1){const b=+mt[1];if(b>=20&&b<=300)s.tempi.push({j:mi(a.x),bpm:b})}
+const mt=/[=＝]\s*(\d{2,3})\b/.exec(a.s);if(mt&&a.y>=s.t1-14*g&&a.y<=s.t1+.5*g){const b=+mt[1];if(b>=20&&b<=300)s.tempi.push({j:mi(a.x),bpm:b})}
 if(/^\d{1,2}$/.test(a.s)&&a.y>=s.t1-.3*g&&a.y<=s.b1+.5*g)(a.y<s.t1+3*g?up:lo).push(a)}
+for(const a of T2){if(!/^\d{2,3}$/.test(a.s)||a.x<s.x0-g||a.x>s.x1+g||a.y<s.t1-14*g||a.y>s.t1+.5*g)continue;const b=+a.s;if(b<20||b>300)continue;const e=T2.find(e=>e!==a&&/[=＝]/.test(e.s)&&Math.abs(e.y-a.y)<1.5*g&&a.x-e.x>-.5*g&&a.x-e.x<5*g);if(e&&!s.tempi.some(z=>z.bpm==b&&z.j==mi(a.x)))s.tempi.push({j:mi(a.x),bpm:b})}
+s.dbg=T2.filter(a=>a.x>=s.x0-g&&a.x<=s.x1+g&&a.y>=s.t1-14*g&&a.y<=s.t1+.5*g).map(a=>a.s).slice(0,10);
 for(const u of up){const l=lo.find(l=>Math.abs(l.x-u.x)<=1.2*g);if(!l)continue;const num=+u.s,den=+l.s,j=mi(u.x);if([1,2,4,8,16].includes(den)&&num>=1&&num<=32&&!s.sigs.some(z=>z.j==j))s.sigs.push({j,num,den})}}}
 function analyze(c){const W=c.width,H=c.height,d=c.getContext('2d').getImageData(0,0,W,H).data,dk=new Uint8Array(W*H);for(let i=0;i<W*H;i++)dk[i]=d[i*4]+d[i*4+1]+d[i*4+2]<570?1:0;
 const row=new Int32Array(H);for(let y=0;y<H;y++){let s=0;for(let x=0;x<W;x++)s+=dk[y*W+x];row[y]=s}
@@ -58,7 +60,7 @@ const pick=q=>{let best=null,bs=1e9;for(let i=0;i+5<=q.length;i++){const w=q.sli
 for(let i=0;i<stv.length;i++)if(stv[i].length>5)stv[i]=pick(stv[i]);
 for(let i=stv.length-1;i>=0;i--)if(stv[i].length<=2)stv.splice(i,1);
 if(!stv.length)throw new Error('五線譜が見つかりません（横線のみ検出）');
-{const bi=stv.findIndex(x=>x.length!=5);if(bi>=0)throw new Error(`五線の検出が不完全です（検出${stv.length}段、各段の線数 ${stv.map(x=>x.length).join(',')}、段${bi+1}の線の間隔 ${stv[bi].map((v,j)=>j?Math.round(v-stv[bi][j-1]):0).slice(1).join('/')}、標準間隔 ${Math.round(g0)}）[v8]`)}
+{const bi=stv.findIndex(x=>x.length!=5);if(bi>=0)throw new Error(`五線の検出が不完全です（検出${stv.length}段、各段の線数 ${stv.map(x=>x.length).join(',')}、段${bi+1}の線の間隔 ${stv[bi].map((v,j)=>j?Math.round(v-stv[bi][j-1]):0).slice(1).join('/')}、標準間隔 ${Math.round(g0)}）[v9]`)}
 const T=stv.map(q=>[Math.round(q[0]),Math.round(q[4])]);
 const colOK=(x,i)=>{let c=0;for(let y=T[i][0];y<=T[i][1];y++)c+=dk[y*W+x];return c>=.9*(T[i][1]-T[i][0]+1)};
 const gapOK=(x,i)=>{let c=0;const p=T[i][1]+1,q=T[i+1][0];for(let y=p;y<q;y++)c+=dk[y*W+x];return c>=.8*(q-p)};
@@ -78,12 +80,12 @@ for(let n=1;n<=sc.total;n++){if(sc.pages[n])continue;if(cancel)break;$('#at').te
 try{const c=await renderPage(n);sc.pages[n]={ok:true,systems:analyze(c)};const pv=$('#pv');pv.width=c.width/4;pv.height=c.height/4;pv.getContext('2d').drawImage(c,0,0,pv.width,pv.height)}catch(e){sc.pages[n]={ok:false,err:e.message}}
 $('#pbar i').style.width=Math.round(ok()/sc.total*100)+'%';$('#an').textContent=`${ok()} / ${sc.total} ページ（${Math.round(ok()/sc.total*100)}％）`;await putS(sc)}}
 $('#cx').onclick=()=>{cancel=true};
-async function openScore(id){sc=await getS(id);if(sc.ver!==8){sc.pages={};sc.ver=8;sc.candDone=false;await putS(sc)}cancel=false;$('#pbar i').style.width='0';show('ana');
+async function openScore(id){sc=await getS(id);if(sc.ver!==9){sc.pages={};sc.ver=9;sc.candDone=false;await putS(sc)}cancel=false;$('#pbar i').style.width='0';show('ana');
 try{pdf=await pdfjsLib.getDocument({data:await (await getF(id)).blob.arrayBuffer()}).promise}catch(e){alert('PDFを開けません：'+e.message);show('lib');return}
 await runAnalysis();if(cancel){show('lib');load();return}await buildPlayer()}
-async function buildPlayer(){S=[];cands={};let bad=0,off=0;$('#at').textContent='楽譜を読み込み中';
+async function buildPlayer(){S=[];cands={};dbgs=[];let bad=0,off=0;$('#at').textContent='楽譜を読み込み中';
 for(let n=1;n<=sc.total;n++){const p=sc.pages[n];if(!p||!p.ok){bad=n;break}const pc=await renderPage(n);$('#an').textContent=`${n} / ${sc.total} ページ`;
-for(const s of p.systems){const cv=document.createElement('canvas');cv.width=s.x1-s.x0;cv.height=s.y1-s.y0;cv.getContext('2d').drawImage(pc,s.x0,s.y0,cv.width,cv.height,0,0,cv.width,cv.height);S.push({cv,g:s.g,bars:s.bars,w:cv.width,h:cv.height});for(const t of s.tempi||[])(cands[off+t.j]=cands[off+t.j]||{}).bpm=t.bpm;for(const t of s.sigs||[]){const o=cands[off+t.j]=cands[off+t.j]||{};o.num=t.num;o.den=t.den}off+=s.bars.length-1}}
+for(const s of p.systems){const cv=document.createElement('canvas');cv.width=s.x1-s.x0;cv.height=s.y1-s.y0;cv.getContext('2d').drawImage(pc,s.x0,s.y0,cv.width,cv.height,0,0,cv.width,cv.height);S.push({cv,g:s.g,bars:s.bars,w:cv.width,h:cv.height});for(const t of s.tempi||[])(cands[off+t.j]=cands[off+t.j]||{}).bpm=t.bpm;for(const t of s.sigs||[]){const o=cands[off+t.j]=cands[off+t.j]||{};o.num=t.num;o.den=t.den}if(dbgs.length<4&&(s.dbg||[]).length)dbgs.push(s.dbg.join(' '));off+=s.bars.length-1}}
 failMsg=bad?`ページ${bad}の解析に失敗したため、その手前で停止します（${sc.pages[bad]?sc.pages[bad].err:'未解析'}）。`:'';
 if(!S.length){alert('演奏できるページがありません。'+failMsg);show('lib');load();return}
 if(failMsg)alert(failMsg);show('ply');layout();if(!sc.candDone)applyCands(false);
@@ -91,7 +93,7 @@ if(!sc.fresh&&(sc.pos.m||sc.pos.f)&&confirm('続きから再開しますか？\n
 mode='stop';cur=stateAt(m);ui();place()}
 function applyCands(force){const ks=Object.keys(cands).map(Number).sort((a,b)=>a-b);let s={bpm:sc.bpm,num:sc.num,den:sc.den};const out=[];
 for(const k of ks){const c=cands[k],d={};for(const q of['bpm','num','den'])if(c[q]!=null&&c[q]!==s[q])d[q]=c[q];if(Object.keys(d).length){out.push([k,d]);Object.assign(s,d)}}
-if(!out.length){if(force)alert('反映できる新しいテンポ・拍子記号はありません（反映済み、または文字として含まれていない楽譜です）');sc.candDone=true;putS(sc);return}
+if(!out.length){if(force)alert('反映できる新しいテンポ・拍子記号はありません（反映済み、または文字として含まれていない楽譜です）'+(dbgs.length?'\n\n五線の上にある文字（確認用）：\n'+dbgs.join('\n'):''));sc.candDone=true;putS(sc);return}
 const tx=out.slice(0,10).map(([k,d])=>`小節${k+1}：${d.bpm?'♩='+d.bpm+' ':''}${d.num?d.num+'/'+d.den:''}`).join('\n')+(out.length>10?`\n…ほか${out.length-10}件`:'');
 sc.candDone=true;if(!confirm('次のテンポ・拍子記号を認識しました。反映しますか？（♩は四分音符と仮定、あとから変更できます）\n\n'+tx)){putS(sc);return}
 for(const[k,d]of out){if(k==0)Object.assign(sc,d);else sc.changes[k]=Object.assign({},d,sc.changes[k]||{})}putS(sc)}
